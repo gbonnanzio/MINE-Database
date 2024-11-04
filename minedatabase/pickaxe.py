@@ -361,6 +361,9 @@ class Pickaxe:
         except (IndexError, ValueError):
             raise ValueError(f"Unable to load coreactant: {coreactant_text}")
         cpd_id = self._add_compound(split_text[0], smi, "Coreactant", mol)
+        if cpd_id is None:
+            print('Unable to add compound ',split_text[0],' as coreactant')
+            return
         # If hydrogens are to be explicitly represented, add them to the Mol
         # object
         if self.explicit_h:
@@ -411,7 +414,7 @@ class Pickaxe:
                             and coreactant_name != "Any"
                         ):
                             raise ValueError(
-                                "Undefined coreactant:" f"{coreactant_name}"
+                                "Undefined coreactant:" + str(coreactant_name)
                             )
                     # Create ChemicalReaction object from SMARTS string
                     rxn = ReactionFromSmarts(rule["SMARTS"])
@@ -438,7 +441,9 @@ class Pickaxe:
                     # Update reaction rules dictionary
                     self.operators[rule["Name"]] = (rxn, rule)
                 except Exception as e:
-                    raise ValueError(f"{str(e)}\nFailed to parse" f"{rule['Name']}")
+                    #raise ValueError(f"{str(e)}\nFailed to parse" f"{rule['Name']}")
+                    print(f"{str(e)}\nFailed to parse" f"{rule['Name']}")
+                    skipped += 1
         if skipped:
             print(f"WARNING: {skipped} rules skipped")
 
@@ -604,7 +609,7 @@ class Pickaxe:
                             outfile.write(d2d.GetDrawingText())
                     except OSError:
                         print(f"Unable to generate image for {cpd_dict['SMILES']}")
-
+            
         return cpd_id
 
     def transform_all(self, processes: int = 1, generations: int = 1) -> None:
@@ -652,6 +657,7 @@ class Pickaxe:
 
                 # Tracking compounds formed
                 n_comps = len(self.compounds)
+                
                 n_rxns = len(self.reactions)
 
                 # Get SMILES to be expanded
@@ -662,6 +668,11 @@ class Pickaxe:
                     and cpd["Type"] not in ["Coreactant", "Target Compound"]
                     and cpd["Expand"]
                 ]
+                #print(compound_smiles)
+                #for cpd in self.compounds.values():
+                #    if cpd["Type"] == 'Starting Compound':
+                #        print('FOUND STARTING')
+                #quit()
                 # No compounds found
                 if not compound_smiles:
                     print(
@@ -671,7 +682,10 @@ class Pickaxe:
                     return None
 
                 self._transform_helper(compound_smiles, processes)
+                #print(len(self.compounds))
                 self._remove_cofactor_redundancy()
+                #print(len(self.compounds))
+                
 
                 print(
                     f"Generation {self.generation + 1} finished in"
@@ -683,7 +697,7 @@ class Pickaxe:
                 print("----------------------------------------\n")
 
             self.generation += 1
-
+    '''
     # Partial operator code
     # def load_partial_operators(self, mapped_reactions):
     #     """Generate set of partial operators from a list of mapped reactions
@@ -789,7 +803,8 @@ class Pickaxe:
     #                     filtered_partials[SMARTS_match] = [rule]
 
     #     return filtered_partials
-
+    '''
+    
     def _remove_cofactor_redundancy(self) -> None:
         """Check for reactions that are to be removed.
 
@@ -819,7 +834,10 @@ class Pickaxe:
                 # generate products list with replacements
                 reactants = []
                 products = []
+                starting_flag = False
                 for s, reactant in rxn["Reactants"]:
+                    if self.compounds[reactant]["Type"] == 'Starting Compound':
+                        starting_flag = True
                     if reactant in cofactors_as_cpds:
                         reactants.append((s, self.compounds["X" + reactant[1:]]))
                     else:
@@ -839,6 +857,7 @@ class Pickaxe:
                 #       (1) O + (1) NCCCNc1cc(C(=O)O)ccc1O'
                 # are possible. Filter out
                 sorted_reactants = sorted(reactants, key=lambda x: x[1]["_id"])
+                
                 sorted_products = sorted(products, key=lambda x: x[1]["_id"])
 
                 # Update newly calculated reaction info in self.reactions.
@@ -858,7 +877,7 @@ class Pickaxe:
                     pass  # No need to update anything in self.reactions
 
                 # All reactants are cofactors, don't create reaction
-                elif all([r[1]["_id"].startswith("X") for r in sorted_reactants]):
+                elif all([r[1]["_id"].startswith("X") for r in sorted_reactants]) and (starting_flag == False):
                     pass
 
                 # Reaction already exists, update reaction operators
